@@ -187,7 +187,7 @@ async fn test_transparent_png_conversion() {
 }
 
 #[tokio::test]
-async fn test_animated_gif_conversion() {
+async fn test_animated_gif_conversion_webp() {
     let temp_dir = TempDir::new().unwrap();
     let (app, config) = create_test_app(&temp_dir);
     create_test_animated_gif(std::path::Path::new(&config.img_path), "animated.gif");
@@ -206,6 +206,91 @@ async fn test_animated_gif_conversion() {
 
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.headers().get(header::CONTENT_TYPE).unwrap(), "image/webp");
+    assert_eq!(response.headers().get("X-Served-Format").unwrap(), "webp");
+    assert_eq!(response.headers().get("X-Original-Format").unwrap(), "gif");
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert!(!bytes.is_empty());
+}
+
+#[tokio::test]
+async fn test_animated_gif_conversion_avif() {
+    let temp_dir = TempDir::new().unwrap();
+    let (app, config) = create_test_app(&temp_dir);
+    create_test_animated_gif(std::path::Path::new(&config.img_path), "animated.gif");
+
+    // Request AVIF from animated GIF
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/animated.gif")
+                .header(header::ACCEPT, "image/avif,image/webp,*/*;q=0.8")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers().get(header::CONTENT_TYPE).unwrap(), "image/avif");
+    assert_eq!(response.headers().get("X-Served-Format").unwrap(), "avif");
+    assert_eq!(response.headers().get("X-Original-Format").unwrap(), "gif");
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert!(!bytes.is_empty());
+}
+
+#[tokio::test]
+async fn test_animated_gif_conversion_jxl() {
+    let temp_dir = TempDir::new().unwrap();
+    let (app, config) = create_test_app(&temp_dir);
+    create_test_animated_gif(std::path::Path::new(&config.img_path), "animated.gif");
+
+    // Request JXL from animated GIF
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/animated.gif")
+                .header(header::ACCEPT, "image/jxl,image/avif,image/webp,*/*;q=0.8")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers().get(header::CONTENT_TYPE).unwrap(), "image/jxl");
+    assert_eq!(response.headers().get("X-Served-Format").unwrap(), "jxl");
+    assert_eq!(response.headers().get("X-Original-Format").unwrap(), "gif");
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert!(!bytes.is_empty());
+}
+
+#[test]
+fn test_real_world_animated_gif_conversion() {
+    let sample = std::path::Path::new("/home/liu/Downloads/f166430961aee11960e6672d3c1997c0ae7ae3f832fdb904359adfd1db6bf9be.gif");
+    if !sample.exists() {
+        return;
+    }
+    let temp_dir = TempDir::new().unwrap();
+    let avif_out = temp_dir.path().join("out.avif");
+    let jxl_out = std::path::PathBuf::from("/tmp/test_jxlify.jxl");
+    let webp_out = temp_dir.path().join("out.webp");
+
+    jxlify::encoder::animated::convert_animated_gif_to_avif(sample, &avif_out, 80).unwrap();
+    assert!(avif_out.exists() && std::fs::metadata(&avif_out).unwrap().len() > 0);
+
+    jxlify::encoder::animated::convert_animated_gif_to_jxl(sample, &jxl_out, 80).unwrap();
+    assert!(jxl_out.exists() && std::fs::metadata(&jxl_out).unwrap().len() > 0);
+
+    jxlify::encoder::animated::convert_animated_gif_to_webp(sample, &webp_out, 80).unwrap();
+    assert!(webp_out.exists() && std::fs::metadata(&webp_out).unwrap().len() > 0);
+
+    println!(
+        "Original GIF: {} bytes | AVIF: {} bytes | JXL: {} bytes | WebP: {} bytes",
+        std::fs::metadata(sample).unwrap().len(),
+        std::fs::metadata(&avif_out).unwrap().len(),
+        std::fs::metadata(&jxl_out).unwrap().len(),
+        std::fs::metadata(&webp_out).unwrap().len(),
+    );
 }
 
 #[tokio::test]

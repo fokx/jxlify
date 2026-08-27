@@ -1,5 +1,5 @@
 use image::{DynamicImage, GenericImageView};
-use ravif::{Encoder, Img, RGBA8};
+use zenravif::{Encoder, Img, RGBA8};
 use std::path::Path;
 
 pub const AVIF_MAX_DIMENSION: u32 = 65536;
@@ -32,7 +32,7 @@ pub fn encode_avif(img: &DynamicImage, output_path: &Path, quality: u8) -> Resul
 
     let encoded = encoder
         .encode_rgba(img_ref)
-        .map_err(|e| format!("ravif AVIF encode error: {:?}", e))?;
+        .map_err(|e| format!("zenravif AVIF encode error: {:?}", e))?;
 
     crate::helper::atomic_write(output_path, &encoded.avif_file)
         .map_err(|e| format!("Failed to write AVIF file: {}", e))

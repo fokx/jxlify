@@ -28,10 +28,16 @@ pub fn convert_to_target(
             NegotiatedFormat::Webp => {
                 return animated::convert_animated_gif_to_webp(raw_path, output_path, config.quality);
             }
-            // For JXL or AVIF or Raw on animated GIF, if WebP is enabled convert to WebP or copy original
-            _ => {
-                // Return error to trigger fallback to serving original GIF untouched
-                return Err("Animated GIF requested with non-WebP target format, fallback to original".to_string());
+            NegotiatedFormat::Avif => {
+                return animated::convert_animated_gif_to_avif(raw_path, output_path, config.quality);
+            }
+            NegotiatedFormat::Jxl => {
+                return animated::convert_animated_gif_to_jxl(raw_path, output_path, config.quality);
+            }
+            NegotiatedFormat::Raw => {
+                return std::fs::copy(raw_path, output_path)
+                    .map(|_| ())
+                    .map_err(|e| format!("Failed to copy raw image: {}", e));
             }
         }
     }
