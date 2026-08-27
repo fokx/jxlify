@@ -1,0 +1,42 @@
+[Unit]
+Description=JXLify - Next-Gen Image Proxy & Origin Server
+Documentation=https://github.com/webp-sh/webp_server_go
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Binary & Default Configuration Path
+ExecStart=/usr/bin/jxlify -c /etc/jxlify/config.toml
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Standard systemd directories automatically managed with correct permissions
+ConfigurationDirectory=jxlify
+CacheDirectory=jxlify
+
+# Run as unprivileged user.
+# Group is intentionally omitted so systemd automatically adopts the user's
+# default primary group ('nogroup' on Ubuntu/Debian, 'nobody' on Arch/RHEL).
+User=nobody
+
+# Reliability & Auto-restart
+Restart=always
+RestartSec=5s
+
+# High-concurrency descriptors limit
+LimitNOFILE=65536
+LimitNPROC=65536
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jxlify
+
+# Security & Sandboxing
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,117 @@
+# ==============================================================================
+# JXLify Configuration File
+# ==============================================================================
+# This configuration file controls server behaviors, image processing,
+# storage paths, cache management, and performance tuning for JXLify.
+
+# ------------------------------------------------------------------------------
+# 1. Server & Network Binding
+# ------------------------------------------------------------------------------
+
+# host:
+#   IP address to bind the HTTP server to.
+#   - "127.0.0.1": Listen only on localhost (recommended behind a reverse proxy).
+#   - "0.0.0.0": Listen on all network interfaces.
+host = "127.0.0.1"
+
+# port:
+#   TCP port number to listen on.
+port = 3333
+
+# disable_keepalive:
+#   When set to true, disables HTTP persistent connections and adds `Connection: close`
+#   header to every response. (Default: false)
+disable_keepalive = false
+
+# concurrency:
+#   Maximum concurrent worker pool capacity for handling requests simultaneously.
+concurrency = 262144
+
+# read_buffer_size:
+#   Internal I/O buffer chunk size in bytes when streaming files from disk or network.
+read_buffer_size = 4096
+
+
+# ------------------------------------------------------------------------------
+# 2. Image Conversion & Quality Settings
+# ------------------------------------------------------------------------------
+
+# quality:
+#   Compression quality level for lossy encoding (1 to 100).
+#   - 80: Recommended default. Produces ~70-85% file size reduction with visually lossless fidelity.
+#   - 100: Enables true mathematical lossless compression mode for JPEG XL and WebP.
+quality = 80
+
+# allowed_types:
+#   Whitelist of original source image file extensions that JXLify is permitted to serve.
+#   Requests for file extensions not in this list will be rejected with HTTP 400 Bad Request.
+#   Use ["*"] to allow all image formats.
+allowed_types = ["jpg", "png", "jpeg", "gif", "bmp", "svg", "heic", "nef", "webp", "avif", "jxl"]
+
+# convert_types:
+#   List of target modern formats enabled for automatic content negotiation.
+#   Format fallback priority is strictly: JPEG XL -> AVIF -> WebP -> Original.
+#   To disable a format globally, simply remove it from this list (e.g. ["avif", "webp"]).
+convert_types = ["jxl", "avif", "webp"]
+
+# strip_metadata:
+#   When set to true, strips EXIF, GPS location tags, and color profiles from converted images
+#   to minimize file size and protect user privacy. (Default: true)
+strip_metadata = true
+
+
+# ------------------------------------------------------------------------------
+# 3. Storage Paths
+# ------------------------------------------------------------------------------
+
+# img_path:
+#   The root source path containing your original, unprocessed images.
+#   - Local mode:  Path to a local directory (e.g. "./data/pics" or "/var/www/uploads").
+#   - Remote mode: HTTP/HTTPS base URL of an upstream server or CDN (e.g. "https://origin.example.com/assets").
+img_path = "./data/pics"
+
+# cache_path:
+#   Unified disk cache directory for all generated data (converted images, JSON metadata,
+#   and upstream downloads).
+#   Safe to delete at any time (e.g. `rm -rf ./data/cache`).
+#   Internal layout:
+#     - ./data/cache/images/   : Converted .jxl, .avif, .webp files (2-level sharded)
+#     - ./data/cache/metadata/ : JSON metadata & BlurHash (2-level sharded)
+#     - ./data/cache/remote/   : Upstream downloads in proxy mode (2-level sharded)
+cache_path = "./data/cache"
+
+
+# ------------------------------------------------------------------------------
+# 4. Dynamic Resizing & Smart Cropping
+# ------------------------------------------------------------------------------
+
+# enable_extra_params:
+#   When set to true, enables dynamic on-the-fly image resizing and cropping via URL query parameters:
+#   - Exact resize & crop:   `GET /photo.jpg?width=400&height=300`
+#   - Proportional bounding: `GET /photo.jpg?max_width=800&max_height=600`
+enable_extra_params = true
+
+# crop_interesting:
+#   Focal-point algorithm used when cropping images to non-proportional aspect ratios:
+#   - "InterestingAttention": Saliency-based crop focusing on high-detail subjects (Recommended).
+#   - "InterestingEntropy":   Focuses on regions with highest visual complexity/entropy.
+#   - "InterestingCentre":    Crops symmetrically around the center.
+#   - "InterestingNone":      Crops from the top-left corner.
+crop_interesting = "InterestingAttention"
+
+
+# ------------------------------------------------------------------------------
+# 5. Cache Lifecycle & Automatic LRU Cleaner
+# ------------------------------------------------------------------------------
+
+# cache_ttl:
+#   Browser cache time-to-live in seconds (default 2592000 = 30 days).
+#   Sets the `Cache-Control: public, max-age=...` HTTP response header.
+cache_ttl = 2592000
+
+# max_cache_size:
+#   Maximum disk cache quota in Megabytes (MB) for `cache_path`.
+#   - 0: Unlimited cache size (no automated purging).
+#   - e.g. 10240: 10 GB limit. A background cleaner runs every 60 seconds and automatically
+#     purges the oldest, least-recently-modified files (LRU policy) when quota is exceeded.
+max_cache_size = 0
