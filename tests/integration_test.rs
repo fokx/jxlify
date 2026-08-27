@@ -476,3 +476,77 @@ async fn test_avif_raw_served_directly_when_browser_only_supports_avif() {
     }
     assert_eq!(cached_files, 0, "No cache file should be generated when serving raw directly");
 }
+
+#[tokio::test]
+async fn test_format_query_param_override() {
+    let temp_dir = TempDir::new().unwrap();
+    let (app, config) = create_test_app(&temp_dir);
+    create_test_image(std::path::Path::new(&config.img_path), "sample.avif", false);
+
+    // Browser sends Accept for avif/webp, but URL specifies ?format=jxl
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/sample.avif?format=jxl")
+                .header(header::ACCEPT, "image/avif,image/webp,*/*;q=0.8")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers().get(header::CONTENT_TYPE).unwrap(), "image/jxl");
+    assert_eq!(response.headers().get("X-Served-Format").unwrap(), "jxl");
+    assert_eq!(response.headers().get("X-Original-Format").unwrap(), "avif");
+}
+
+#[tokio::test]
+async fn test_fuzzy_stem_resolution() {
+    let temp_dir = TempDir::new().unwrap();
+    let (app, config) = create_test_app(&temp_dir);
+    // Only sample.avif exists on disk
+    create_test_image(std::path::Path::new(&config.img_path), "sample.avif", false);
+
+    // Client requests sample.jxl directly
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/sample.jxl")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers().get(header::CONTENT_TYPE).unwrap(), "image/jxl");
+    assert_eq!(response.headers().get("X-Served-Format").unwrap(), "jxl");
+    assert_eq!(response.headers().get("X-Original-Format").unwrap(), "avif");
+}
+
+#[tokio::test]
+async fn test_ua_heuristic_thorium_serves_jxl() {
+    let temp_dir = TempDir::new().unwrap();
+    let (app, config) = create_test_app(&temp_dir);
+    create_test_image(std::path::Path::new(&config.img_path), "sample.avif", false);
+
+    // Thorium browser sends document navigation Accept header (no image/jxl)
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/sample.avif")
+                .header(header::ACCEPT, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .header(header::USER_AGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Thorium/122.0.6261.128")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers().get(header::CONTENT_TYPE).unwrap(), "image/jxl");
+    assert_eq!(response.headers().get("X-Served-Format").unwrap(), "jxl");
+    assert_eq!(response.headers().get("X-Original-Format").unwrap(), "avif");
+}
+

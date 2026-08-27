@@ -65,14 +65,21 @@ pub async fn image_handler(
     let is_remote_root = state.config.img_path.starts_with("http://")
         || state.config.img_path.starts_with("https://");
 
-    let (raw_image_path, subdir) = if is_remote_root {
+    let mut requested_ext_override: Option<&str> = None;
+
+    let (raw_image_path, subdir, orig_ext) = if is_remote_root {
         let remote_url = format!(
             "{}/{}",
             state.config.img_path.trim_end_matches('/'),
             sanitized_rel_path.to_string_lossy().trim_start_matches('/')
         );
         match fetch_remote_image(&state.http_client, &remote_url, "remote", &state.config).await {
-            Ok(path) => (path, "remote".to_string()),
+            Ok(path) => {
+                let actual_ext = crate::helper::get_extension(
+                    path.file_name().and_then(|s| s.to_str()).unwrap_or_default()
+                );
+                (path, "remote".to_string(), actual_ext)
+            }
             Err(e) => {
                 warn!("Remote fetch failed: {}", e);
                 return (StatusCode::NOT_FOUND, "Image not found").into_response();
@@ -80,10 +87,22 @@ pub async fn image_handler(
         }
     } else {
         let local_path = Path::new(&state.config.img_path).join(&sanitized_rel_path);
-        if !crate::helper::image_exists(&local_path) {
-            return (StatusCode::NOT_FOUND, "Image not found").into_response();
+        if crate::helper::image_exists(&local_path) {
+            (local_path, "local".to_string(), ext.clone())
+        } else {
+            // Fuzzy stem resolution: look for sibling file with same stem and allowed extension
+            let stem = Path::new(filename).file_stem().and_then(|s| s.to_str()).unwrap_or_default();
+            let parent = local_path.parent().unwrap_or(Path::new(""));
+            if let Some(candidate) = find_stem_candidate(parent, stem, &state.config) {
+                let candidate_ext = crate::helper::get_extension(
+                    candidate.file_name().and_then(|s| s.to_str()).unwrap_or_default()
+                );
+                requested_ext_override = Some(&ext);
+                (candidate, "local".to_string(), candidate_ext)
+            } else {
+                return (StatusCode::NOT_FOUND, "Image not found").into_response();
+            }
         }
-        (local_path, "local".to_string())
     };
 
     // 5. Read / build metadata
@@ -111,16 +130,35 @@ pub async fn image_handler(
         }
     }
 
-    // 8. Content Negotiation
+    // 8. Content Negotiation or Query Parameter Override
     let accept_header = headers.get(ACCEPT).and_then(|v| v.to_str().ok());
     let ua_header = headers.get(USER_AGENT).and_then(|v| v.to_str().ok());
-    let target_format = negotiate_format(accept_header, ua_header, &state.config);
+
+    let target_format = if let Some(fmt_param) = query.get("format").or_else(|| query.get("f")) {
+        match fmt_param.to_lowercase().as_str() {
+            "jxl" if state.config.enable_jxl => NegotiatedFormat::Jxl,
+            "avif" if state.config.enable_avif => NegotiatedFormat::Avif,
+            "webp" if state.config.enable_webp => NegotiatedFormat::Webp,
+            "raw" | "orig" | "original" => NegotiatedFormat::Raw,
+            _ => negotiate_format(accept_header, ua_header, &state.config),
+        }
+    } else if let Some(req_ext) = requested_ext_override {
+        match req_ext.to_lowercase().as_str() {
+            "jxl" if state.config.enable_jxl => NegotiatedFormat::Jxl,
+            "avif" if state.config.enable_avif => NegotiatedFormat::Avif,
+            "webp" if state.config.enable_webp => NegotiatedFormat::Webp,
+            "raw" => NegotiatedFormat::Raw,
+            _ => negotiate_format(accept_header, ua_header, &state.config),
+        }
+    } else {
+        negotiate_format(accept_header, ua_header, &state.config)
+    };
 
     // 9. If raw image already matches the negotiated format and no resizing is requested, skip conversion!
     let is_already_target_format = match target_format {
-        NegotiatedFormat::Jxl => ext == "jxl",
-        NegotiatedFormat::Avif => ext == "avif",
-        NegotiatedFormat::Webp => ext == "webp",
+        NegotiatedFormat::Jxl => orig_ext == "jxl",
+        NegotiatedFormat::Avif => orig_ext == "avif",
+        NegotiatedFormat::Webp => orig_ext == "webp",
         NegotiatedFormat::Raw => true,
     };
 
@@ -128,14 +166,14 @@ pub async fn image_handler(
         debug!(
             "Raw image {} is already in target format ({}), serving directly without conversion",
             raw_image_path.display(),
-            ext
+            orig_ext
         );
         return serve_file_response(
             &raw_image_path,
             &raw_image_path,
             &weak_etag,
-            &ext,
-            &ext,
+            &orig_ext,
+            &orig_ext,
         ).await;
     }
 
@@ -165,8 +203,8 @@ pub async fn image_handler(
                     &raw_image_path,
                     &raw_image_path,
                     &weak_etag,
-                    &ext,
-                    &ext,
+                    &orig_ext,
+                    &orig_ext,
                 ).await;
             }
             debug!(
@@ -185,10 +223,34 @@ pub async fn image_handler(
         &cached_path,
         &raw_image_path,
         &weak_etag,
-        &ext,
+        &orig_ext,
         target_ext,
     )
     .await
+}
+
+fn find_stem_candidate(parent: &Path, stem: &str, config: &JxlifyConfig) -> Option<std::path::PathBuf> {
+    if stem.is_empty() {
+        return None;
+    }
+    if let Ok(entries) = std::fs::read_dir(parent) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(entry_stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    if entry_stem == stem {
+                        let entry_ext = crate::helper::get_extension(
+                            path.file_name().and_then(|s| s.to_str()).unwrap_or_default()
+                        );
+                        if config.is_allowed_extension(&entry_ext) {
+                            return Some(path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 async fn serve_file_response(

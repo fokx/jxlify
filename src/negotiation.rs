@@ -70,6 +70,19 @@ pub fn detect_client_capabilities(accept: Option<&str>, user_agent: Option<&str>
     if let Some(ua_str) = user_agent {
         let ua_lower = ua_str.to_lowercase();
 
+        // Check browsers with built-in or default JPEG XL support
+        if ua_lower.contains("thorium")
+            || ua_lower.contains("floorp")
+            || ua_lower.contains("zen/")
+            || ua_lower.contains("palemoon")
+            || ua_lower.contains("waterfox")
+            || ua_lower.contains("basilisk")
+        {
+            caps.jxl = true;
+            caps.avif = true;
+            caps.webp = true;
+        }
+
         // Check iOS / Safari versions
         if let Some(version) = extract_version_after_patterns(&ua_lower, &["version/", "os "]) {
             if version >= 17 {
@@ -170,6 +183,21 @@ mod tests {
         // Safari 17 on iOS
         let ua_safari17 = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
         let fmt = negotiate_format(None, Some(ua_safari17), &config);
+        assert_eq!(fmt, NegotiatedFormat::Jxl);
+
+        // Thorium
+        let ua_thorium = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Thorium/122.0.6261.128";
+        let fmt = negotiate_format(None, Some(ua_thorium), &config);
+        assert_eq!(fmt, NegotiatedFormat::Jxl);
+
+        // Floorp
+        let ua_floorp = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0 Floorp/11.17.0";
+        let fmt = negotiate_format(None, Some(ua_floorp), &config);
+        assert_eq!(fmt, NegotiatedFormat::Jxl);
+
+        // Zen Browser
+        let ua_zen = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0 Zen/1.0.0";
+        let fmt = negotiate_format(None, Some(ua_zen), &config);
         assert_eq!(fmt, NegotiatedFormat::Jxl);
 
         // Chrome 120
