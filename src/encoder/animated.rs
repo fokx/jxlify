@@ -137,7 +137,7 @@ pub fn convert_animated_gif_to_avif(
         .map_err(|e| format!("Failed to write animated AVIF file: {}", e))
 }
 
-/// Convert an animated GIF to an animated JPEG XL file preserving frame timing and transparency using official libjxl
+/// Convert an animated GIF to an animated JPEG XL file preserving frame timing and transparency using pure Rust jxl-encoder
 pub fn convert_animated_gif_to_jxl(
     input_path: &Path,
     output_path: &Path,
@@ -145,22 +145,20 @@ pub fn convert_animated_gif_to_jxl(
 ) -> Result<(), String> {
     let decoded = decode_gif_frames(input_path)?;
 
-    use jpegxl_sys::common::types::{JxlDataType, JxlEndianness, JxlPixelFormat};
-    use jpegxl_sys::encoder::encode::{
-        JxlColorEncodingSetToSRGB, JxlEncoderAddImageFrame, JxlEncoderCloseInput, JxlEncoderCreate,
-        JxlEncoderDestroy, JxlEncoderFrameSettingId, JxlEncoderFrameSettingsCreate,
-        JxlEncoderFrameSettingsSetOption, JxlEncoderInitBasicInfo, JxlEncoderInitExtraChannelInfo,
-        JxlEncoderInitFrameHeader, JxlEncoderProcessOutput, JxlEncoderSetBasicInfo,
-        JxlEncoderSetColorEncoding, JxlEncoderSetExtraChannelInfo, JxlEncoderSetFrameDistance,
-        JxlEncoderSetFrameHeader, JxlEncoderSetFrameLossless, JxlEncoderSetParallelRunner,
-        JxlEncoderStatus,
+    let anim_params = jxl_encoder::AnimationParams {
+        tps_numerator: 1000,
+        tps_denominator: 1,
+        num_loops: 0,
     };
-    use jpegxl_sys::metadata::codestream_header::JxlExtraChannelType;
-    use jpegxl_sys::threads::thread_parallel_runner::{
-        JxlThreadParallelRunner, JxlThreadParallelRunnerCreate,
-        JxlThreadParallelRunnerDefaultNumWorkerThreads, JxlThreadParallelRunnerDestroy,
-    };
-    use std::ptr::null;
+
+    let anim_frames: Vec<jxl_encoder::AnimationFrame<'_>> = decoded
+        .frames
+        .iter()
+        .map(|(rgba_buf, delay_ms)| jxl_encoder::AnimationFrame {
+            pixels: rgba_buf.as_raw(),
+            duration: *delay_ms,
+        })
+        .collect();
 
     let (lossless, distance) = if quality >= 100 {
         (true, 0.0)
@@ -174,155 +172,28 @@ pub fn convert_animated_gif_to_jxl(
         (false, dist)
     };
 
-    unsafe {
-        let enc = JxlEncoderCreate(null());
-        if enc.is_null() {
-            return Err("Failed to create JxlEncoder".to_string());
-        }
+    let jxl_data = if lossless {
+        jxl_encoder::LosslessConfig::new()
+            .encode_animation(
+                decoded.width,
+                decoded.height,
+                jxl_encoder::PixelLayout::Rgba8,
+                &anim_params,
+                &anim_frames,
+            )
+            .map_err(|e| format!("Failed to encode lossless animated JXL: {:?}", e))?
+    } else {
+        jxl_encoder::LossyConfig::new(distance)
+            .encode_animation(
+                decoded.width,
+                decoded.height,
+                jxl_encoder::PixelLayout::Rgba8,
+                &anim_params,
+                &anim_frames,
+            )
+            .map_err(|e| format!("Failed to encode lossy animated JXL: {:?}", e))?
+    };
 
-        struct JxlGuard(*mut jpegxl_sys::encoder::encode::JxlEncoder, *mut std::ffi::c_void);
-        impl Drop for JxlGuard {
-            fn drop(&mut self) {
-                unsafe {
-                    if !self.0.is_null() {
-                        JxlEncoderDestroy(self.0);
-                    }
-                    if !self.1.is_null() {
-                        JxlThreadParallelRunnerDestroy(self.1);
-                    }
-                }
-            }
-        }
-
-        let num_threads = JxlThreadParallelRunnerDefaultNumWorkerThreads();
-        let runner = JxlThreadParallelRunnerCreate(null(), num_threads);
-        let _guard = JxlGuard(enc, runner);
-
-        if !runner.is_null() {
-            let status = JxlEncoderSetParallelRunner(
-                enc,
-                JxlThreadParallelRunner,
-                runner,
-            );
-            if status != JxlEncoderStatus::Success {
-                return Err("Failed to set parallel runner".to_string());
-            }
-        }
-
-        let mut basic_info = {
-            let mut info = std::mem::MaybeUninit::uninit();
-            JxlEncoderInitBasicInfo(info.as_mut_ptr());
-            info.assume_init()
-        };
-        basic_info.xsize = decoded.width;
-        basic_info.ysize = decoded.height;
-        basic_info.bits_per_sample = 8;
-        basic_info.num_color_channels = 3;
-        basic_info.have_animation = true.into();
-        basic_info.animation.tps_numerator = 1000;
-        basic_info.animation.tps_denominator = 1;
-        basic_info.animation.num_loops = 0;
-        basic_info.num_extra_channels = 1;
-        basic_info.alpha_bits = 8;
-
-        if JxlEncoderSetBasicInfo(enc, &basic_info) != JxlEncoderStatus::Success {
-            return Err("Failed to set basic info in libjxl".to_string());
-        }
-
-        let extra_info = {
-            let mut info = std::mem::MaybeUninit::uninit();
-            JxlEncoderInitExtraChannelInfo(JxlExtraChannelType::Alpha, info.as_mut_ptr());
-            let mut info = info.assume_init();
-            info.bits_per_sample = 8;
-            info
-        };
-        if JxlEncoderSetExtraChannelInfo(enc, 0, &extra_info) != JxlEncoderStatus::Success {
-            return Err("Failed to set extra channel info in libjxl".to_string());
-        }
-
-        let color_encoding = {
-            let mut enc_struct = std::mem::MaybeUninit::uninit();
-            JxlColorEncodingSetToSRGB(enc_struct.as_mut_ptr(), false.into());
-            enc_struct.assume_init()
-        };
-        if JxlEncoderSetColorEncoding(enc, &color_encoding) != JxlEncoderStatus::Success {
-            return Err("Failed to set color encoding in libjxl".to_string());
-        }
-
-        let num_frames = decoded.frames.len();
-        let pixel_format = JxlPixelFormat {
-            num_channels: 4,
-            data_type: JxlDataType::Uint8,
-            endianness: JxlEndianness::Native,
-            align: 0,
-        };
-
-        for (i, (rgba_buf, delay_ms)) in decoded.frames.iter().enumerate() {
-            let frame_settings = JxlEncoderFrameSettingsCreate(enc, null());
-            if frame_settings.is_null() {
-                return Err("Failed to create frame settings in libjxl".to_string());
-            }
-
-            if lossless {
-                JxlEncoderSetFrameLossless(frame_settings, true.into());
-            } else {
-                JxlEncoderSetFrameDistance(frame_settings, distance);
-            }
-
-            JxlEncoderFrameSettingsSetOption(
-                frame_settings,
-                JxlEncoderFrameSettingId::Effort,
-                7,
-            );
-
-            let mut frame_header = {
-                let mut header = std::mem::MaybeUninit::uninit();
-                JxlEncoderInitFrameHeader(header.as_mut_ptr());
-                header.assume_init()
-            };
-            frame_header.duration = *delay_ms;
-            frame_header.is_last = (i == num_frames - 1).into();
-
-            if JxlEncoderSetFrameHeader(frame_settings, &frame_header) != JxlEncoderStatus::Success {
-                return Err("Failed to set frame header in libjxl".to_string());
-            }
-
-            let raw_slice = rgba_buf.as_raw();
-            let status = JxlEncoderAddImageFrame(
-                frame_settings,
-                &pixel_format,
-                raw_slice.as_ptr().cast(),
-                raw_slice.len(),
-            );
-            if status != JxlEncoderStatus::Success {
-                return Err(format!("Failed to add image frame {} in libjxl: {:?}", i, status));
-            }
-        }
-
-        JxlEncoderCloseInput(enc);
-
-        let mut buffer = vec![0u8; 128 * 1024];
-        let mut next_out = buffer.as_mut_ptr();
-        let mut avail_out = buffer.len();
-
-        loop {
-            let status = JxlEncoderProcessOutput(enc, &mut next_out, &mut avail_out);
-            if status == JxlEncoderStatus::Success {
-                break;
-            } else if status == JxlEncoderStatus::NeedMoreOutput {
-                let offset = next_out.offset_from(buffer.as_ptr()) as usize;
-                buffer.resize(buffer.len() * 2, 0);
-                next_out = buffer.as_mut_ptr().add(offset);
-                avail_out = buffer.len() - offset;
-            } else {
-                return Err(format!("JxlEncoderProcessOutput failed with status {:?}", status));
-            }
-        }
-
-        let total_size = next_out.offset_from(buffer.as_ptr()) as usize;
-        buffer.truncate(total_size);
-
-        crate::helper::atomic_write(output_path, &buffer)
-            .map_err(|e| format!("Failed to write animated JXL file: {}", e))
-    }
+    crate::helper::atomic_write(output_path, &jxl_data)
+        .map_err(|e| format!("Failed to write animated JXL file: {}", e))
 }

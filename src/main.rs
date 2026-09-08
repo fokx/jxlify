@@ -11,6 +11,7 @@ use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    jxlify::init();
     let args = CliArgs::parse();
 
     // 1. Handle --dump-config

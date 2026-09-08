@@ -14,8 +14,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "avif"] }
-jpegxl-rs = { version = "0.15", features = ["image", "vendored"] }
-jpegxl-sys = { version = "0.13", features = ["vendored"] }
 zenavif = "0.1"
 zenpixels-convert = { version = "0.2", features = ["rgb"] }
 zenravif = "0.1"
@@ -28,7 +26,7 @@ tempfile = "3.17"
 walkdir = "2.5"
 blurhash = "0.2"
 regex = "1.11"
-jxl-encoder = "0.3"
+jxl-encoder = { version = "0.3", features = ["parallel"] }
 which = "7.0"
 dashmap = "6.1"
 webp-animation = "0.10"
@@ -40,6 +38,8 @@ fastrand = "2.3"
 bytemuck = "1.25"
 tower = { version = "0.5", features = ["util"] }
 toml = "0.8"
+jxl-image-rs-integration = "0.7.1"
+jxl = "0.7.1"
 
 
 

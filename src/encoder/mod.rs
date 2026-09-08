@@ -91,6 +91,11 @@ pub fn load_dynamic_image(raw_path: &Path) -> Result<image::DynamicImage, String
             .map_err(|e| format!("Failed to read AVIF file {}: {}", raw_path.display(), e))?;
         return decode_avif_bytes(&bytes);
     }
+    if ext == "jxl" {
+        let bytes = std::fs::read(raw_path)
+            .map_err(|e| format!("Failed to read JXL file {}: {}", raw_path.display(), e))?;
+        return jxl::decode_jxl(&bytes);
+    }
 
     let reader = ImageReader::open(raw_path)
         .map_err(|e| format!("Failed to open image {}: {}", raw_path.display(), e))?

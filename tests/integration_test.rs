@@ -54,6 +54,8 @@ fn create_test_image(img_dir: &std::path::Path, filename: &str, with_alpha: bool
         jxlify::encoder::avif::encode_avif(&dynamic, &target, 80).unwrap();
     } else if filename.ends_with(".webp") {
         jxlify::encoder::webp::encode_webp(&dynamic, &target, 80).unwrap();
+    } else if filename.ends_with(".jxl") {
+        jxlify::encoder::jxl::encode_jxl(&dynamic, &target, 80).unwrap();
     } else {
         dynamic.save(target).unwrap();
     }
@@ -634,4 +636,31 @@ async fn test_ua_heuristic_thorium_serves_jxl() {
     assert_eq!(response.headers().get("X-Served-Format").unwrap(), "jxl");
     assert_eq!(response.headers().get("X-Original-Format").unwrap(), "avif");
 }
+
+#[tokio::test]
+async fn test_jxl_raw_converted_to_avif_when_browser_only_supports_avif() {
+    let temp_dir = TempDir::new().unwrap();
+    let (app, config) = create_test_app(&temp_dir);
+    // Raw image on disk is JXL
+    create_test_image(std::path::Path::new(&config.img_path), "sample.jxl", false);
+
+    // Browser does NOT support JXL, only AVIF
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/sample.jxl")
+                .header(header::ACCEPT, "image/avif,image/webp,*/*;q=0.8")
+                .header(header::USER_AGENT, "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers().get(header::CONTENT_TYPE).unwrap(), "image/avif");
+    assert_eq!(response.headers().get("X-Served-Format").unwrap(), "avif");
+    assert_eq!(response.headers().get("X-Original-Format").unwrap(), "jxl");
+}
+
 
