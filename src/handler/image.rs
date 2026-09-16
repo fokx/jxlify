@@ -118,9 +118,19 @@ pub async fn image_handler(
         }
     };
 
-    // 5. Read / build metadata
+    // 5. Read / build metadata using canonical source path for consistent caching across aliases
+    let canonical_path = if is_remote_root {
+        req_path.to_string()
+    } else {
+        let rel = raw_image_path
+            .strip_prefix(Path::new(&state.config.img_path))
+            .unwrap_or(&raw_image_path)
+            .to_string_lossy();
+        format!("/{}", rel.trim_start_matches('/'))
+    };
+
     let metadata = read_or_build_metadata(
-        req_path,
+        &canonical_path,
         &raw_image_path,
         &extra,
         &state.config,
