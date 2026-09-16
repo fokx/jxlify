@@ -55,10 +55,23 @@ pub async fn image_handler(
 
     // 3. Parse ExtraParams from Query
     let extra = ExtraParams {
-        width: query.get("width").and_then(|v| v.parse().ok()),
-        height: query.get("height").and_then(|v| v.parse().ok()),
-        max_width: query.get("max_width").and_then(|v| v.parse().ok()),
-        max_height: query.get("max_height").and_then(|v| v.parse().ok()),
+        width: query
+            .get("width")
+            .or_else(|| query.get("w"))
+            .or_else(|| query.get("s"))
+            .and_then(|v| v.parse().ok()),
+        height: query
+            .get("height")
+            .or_else(|| query.get("h"))
+            .and_then(|v| v.parse().ok()),
+        max_width: query
+            .get("max_width")
+            .or_else(|| query.get("mw"))
+            .and_then(|v| v.parse().ok()),
+        max_height: query
+            .get("max_height")
+            .or_else(|| query.get("mh"))
+            .and_then(|v| v.parse().ok()),
     };
 
     // 4. Resolve raw image path (Local or Remote)

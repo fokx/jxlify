@@ -85,26 +85,61 @@ pub fn convert_to_target(
 }
 
 pub fn load_dynamic_image(raw_path: &Path) -> Result<image::DynamicImage, String> {
+    let bytes = std::fs::read(raw_path)
+        .map_err(|e| format!("Failed to read image {}: {}", raw_path.display(), e))?;
     let ext = crate::helper::get_extension(&raw_path.to_string_lossy());
-    if ext == "avif" {
-        let bytes = std::fs::read(raw_path)
-            .map_err(|e| format!("Failed to read AVIF file {}: {}", raw_path.display(), e))?;
-        return decode_avif_bytes(&bytes);
-    }
-    if ext == "jxl" {
-        let bytes = std::fs::read(raw_path)
-            .map_err(|e| format!("Failed to read JXL file {}: {}", raw_path.display(), e))?;
-        return jxl::decode_jxl(&bytes);
+    load_dynamic_image_from_bytes(&bytes, Some(&ext))
+}
+
+pub fn load_dynamic_image_from_bytes(
+    bytes: &[u8],
+    ext_hint: Option<&str>,
+) -> Result<image::DynamicImage, String> {
+    // 1. Detect actual image format by magic bytes using infer
+    let guessed_ext = infer::get(bytes).map(|t| t.extension());
+    let effective_ext = guessed_ext
+        .or(ext_hint)
+        .unwrap_or_default()
+        .to_lowercase();
+
+    // 2. Try format-specific decoder based on effective extension
+    match effective_ext.as_str() {
+        "avif" => {
+            if let Ok(img) = decode_avif_bytes(bytes) {
+                return Ok(img);
+            }
+        }
+        "jxl" => {
+            if let Ok(img) = jxl::decode_jxl(bytes) {
+                return Ok(img);
+            }
+        }
+        _ => {}
     }
 
-    let reader = ImageReader::open(raw_path)
-        .map_err(|e| format!("Failed to open image {}: {}", raw_path.display(), e))?
-        .with_guessed_format()
-        .map_err(|e| format!("Failed to guess image format {}: {}", raw_path.display(), e))?;
+    // 3. Try standard image reader with guessed format (handles JPEG, PNG, GIF, WebP, BMP, etc.)
+    let reader_res = ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format();
 
-    reader
-        .decode()
-        .map_err(|e| format!("Failed to decode image {}: {}", raw_path.display(), e))
+    if let Ok(reader) = reader_res {
+        if let Ok(img) = reader.decode() {
+            return Ok(img);
+        }
+    }
+
+    // 4. If standard reader failed, try remaining specialized decoders as fallback
+    if effective_ext != "avif" {
+        if let Ok(img) = decode_avif_bytes(bytes) {
+            return Ok(img);
+        }
+    }
+    if effective_ext != "jxl" {
+        if let Ok(img) = jxl::decode_jxl(bytes) {
+            return Ok(img);
+        }
+    }
+
+    Err("Failed to decode image: unsupported format or corrupted data".to_string())
 }
 
 pub fn decode_avif_bytes(bytes: &[u8]) -> Result<image::DynamicImage, String> {

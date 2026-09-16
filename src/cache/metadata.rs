@@ -134,11 +134,7 @@ pub fn build_metadata_from_bytes(id: &str, req_path: &str, bytes: &[u8]) -> Meta
         ..Default::default()
     };
 
-    let decoded_img = if ext == "avif" {
-        crate::encoder::decode_avif_bytes(bytes).ok()
-    } else {
-        image::load_from_memory(bytes).ok()
-    };
+    let decoded_img = crate::encoder::load_dynamic_image_from_bytes(bytes, Some(&ext)).ok();
 
     if let Some(img) = decoded_img {
         let (w, h) = img.dimensions();

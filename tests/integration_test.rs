@@ -267,32 +267,44 @@ async fn test_animated_gif_conversion_jxl() {
 }
 
 #[test]
-fn test_real_world_animated_gif_conversion() {
-    let sample = std::path::Path::new("/home/liu/Downloads/f166430961aee11960e6672d3c1997c0ae7ae3f832fdb904359adfd1db6bf9be.gif");
-    if !sample.exists() {
-        return;
+fn test_mismatched_extension_decoding() {
+    let sample = std::path::Path::new("/tmp/9ee16c.avif");
+    if sample.exists() {
+        let res = jxlify::encoder::load_dynamic_image(sample);
+        println!("load_dynamic_image on 9ee16c.avif (actual PNG): {:?}", res.as_ref().map(|img| (img.width(), img.height())));
+
+        let mut config = JxlifyConfig::default();
+        config.quality = 80;
+        let extra = jxlify::config::ExtraParams::default();
+        let out_jxl = std::path::PathBuf::from("/tmp/9ee16c_out.jxl");
+        let conv_res = jxlify::encoder::convert_to_target(
+            sample,
+            jxlify::negotiation::NegotiatedFormat::Jxl,
+            &out_jxl,
+            &extra,
+            &config,
+        );
+        println!("convert_to_target JXL for 9ee16c.avif: {:?}", conv_res);
+        assert!(conv_res.is_ok());
     }
-    let temp_dir = TempDir::new().unwrap();
-    let avif_out = temp_dir.path().join("out.avif");
-    let jxl_out = std::path::PathBuf::from("/tmp/test_jxlify.jxl");
-    let webp_out = temp_dir.path().join("out.webp");
+    let prob = std::path::Path::new("/tmp/problematic.avif");
+    if prob.exists() {
+        let res = jxlify::encoder::load_dynamic_image(prob);
+        println!("load_dynamic_image on problematic.avif: {:?}", res.as_ref().map(|img| (img.width(), img.height())));
 
-    jxlify::encoder::animated::convert_animated_gif_to_avif(sample, &avif_out, 80).unwrap();
-    assert!(avif_out.exists() && std::fs::metadata(&avif_out).unwrap().len() > 0);
-
-    jxlify::encoder::animated::convert_animated_gif_to_jxl(sample, &jxl_out, 80).unwrap();
-    assert!(jxl_out.exists() && std::fs::metadata(&jxl_out).unwrap().len() > 0);
-
-    jxlify::encoder::animated::convert_animated_gif_to_webp(sample, &webp_out, 80).unwrap();
-    assert!(webp_out.exists() && std::fs::metadata(&webp_out).unwrap().len() > 0);
-
-    println!(
-        "Original GIF: {} bytes | AVIF: {} bytes | JXL: {} bytes | WebP: {} bytes",
-        std::fs::metadata(sample).unwrap().len(),
-        std::fs::metadata(&avif_out).unwrap().len(),
-        std::fs::metadata(&jxl_out).unwrap().len(),
-        std::fs::metadata(&webp_out).unwrap().len(),
-    );
+        let mut config = JxlifyConfig::default();
+        config.quality = 80;
+        let extra = jxlify::config::ExtraParams::default();
+        let out_jxl = std::path::PathBuf::from("/tmp/problematic_out.jxl");
+        let conv_res = jxlify::encoder::convert_to_target(
+            prob,
+            jxlify::negotiation::NegotiatedFormat::Jxl,
+            &out_jxl,
+            &extra,
+            &config,
+        );
+        println!("convert_to_target JXL for problematic.avif: {:?}", conv_res);
+    }
 }
 
 #[tokio::test]
