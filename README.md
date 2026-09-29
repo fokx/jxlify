@@ -6,6 +6,8 @@
 *Serving JPEG XL (`.jxl`), AVIF (`.avif`), WebP (`.webp`), and Legacy Formats on the Fly with 100% In-Process Rust Codecs, Smart Content Negotiation, and Cache Acceleration.*
 
 [![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
+[![Crates.io](https://img.shields.io/crates/v/jxlify.svg)](https://crates.io/crates/jxlify)
+[![Documentation](https://docs.rs/jxlify/badge.svg)](https://docs.rs/jxlify)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![JPEG XL](https://img.shields.io/badge/JPEG%20XL-Supported-green.svg)](https://jpegxl.info)
 [![AVIF](https://img.shields.io/badge/AVIF-Supported-blue.svg)](https://aomedia.org/av1-features/avif/)
@@ -142,14 +144,46 @@ This distributes millions of files evenly across $256 \times 256 = 65,536$ subdi
 
 ## 🚀 Quick Start
 
-### Installation & Build
+### Installation
+
+#### Install via Cargo (Binary)
+
+You can install the `jxlify` server binary directly from [crates.io](https://crates.io/crates/jxlify):
 
 ```bash
-cd /f/jxlify
+cargo install jxlify
+```
+
+Once installed, verify the installation by running:
+
+```bash
+jxlify --help
+```
+
+#### Use as a Library Dependency
+
+Add `jxlify` to your project's `Cargo.toml`:
+
+```toml
+[dependencies]
+jxlify = "0.1"
+```
+
+Or add it via the command line:
+
+```bash
+cargo add jxlify
+```
+
+#### Build from Source
+
+```bash
+git clone https://github.com/fokx/jxlify.git
+cd jxlify
 cargo build --release
 ```
 
-The compiled binary will be at `target/release/jxlify`.
+The compiled binary will be located at `target/release/jxlify`.
 
 ---
 

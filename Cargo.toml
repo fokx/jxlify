@@ -2,6 +2,20 @@
 name = "jxlify"
 version = "0.1.0"
 edition = "2024"
+authors = ["fokx <36614441+fokx@users.noreply.github.com>"]
+description = "A next-generation on-the-fly image proxy & origin server supporting JPEG XL, AVIF, WebP, and dynamic conversion"
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/fokx/jxlify"
+homepage = "https://github.com/fokx/jxlify"
+documentation = "https://docs.rs/jxlify"
+keywords = ["jpeg-xl", "avif", "webp", "image-proxy", "image-server"]
+categories = ["web-programming::http-server", "multimedia::images"]
+exclude = [
+    ".idea",
+    ".junie",
+    "data",
+]
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
